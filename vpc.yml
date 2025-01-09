@@ -1,0 +1,160 @@
+---
+- hosts: localhost
+  become: yes
+  gather_facts: false  #if you want to hide the host key verification option then use gather_facts: false #####
+
+### Inline Variable ###
+
+  vars:
+    - aws_access_key: ""
+    - aws_secret_key: ""
+      title: "ARTH"
+    - vpc_name: vasu_vpc
+    - igw_name: vasu_igw
+    - pubsubnet_name: vasu_pub
+    - pvtsubnet_name: vasu_pvt
+    - pubroute_table_name: vasu_pub_rt
+    - pvtroute_table_name: vasu_pvt_rt
+    - security_group_name: vasu_sg
+    - vpc_cidr_block: '11.0.0.0/16'
+    - pubsubnet_cidr_block: '11.0.1.0/24'
+    - pvtsubnet_cidr_block: '11.0.2.0/24'
+    - destination_cidr_block: '0.0.0.0/0'
+    - port22_cidr_block: '0.0.0.0/0'
+    - region: "us-east-1"
+    - pubzone: "us-east-1a"
+    - pvtzone: "us-east-1b"
+    - image_id: "ami-0ca9fb66e076a6e32"
+    - type: "t2.micro"
+    - instance_name: ansible_ec
+
+  tasks:
+
+  ### VPC Creation ####
+
+    - ec2_vpc_net:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        cidr_block: "{{ vpc_cidr_block }}"
+        name: "{{ vpc_name }}"
+        region: "{{ region }}"
+        # enable dns support
+        dns_support: yes
+        # enable dns hostnames
+        dns_hostnames: yes
+        tenancy: default
+        state: absent # to delete Vpc then replace absent instead of presnt
+        register: vpc_result
+
+#### Internet gateway Creation #######
+
+    - ec2_vpc_igw:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0448a0615ea52cdbc"
+        region: "{{ region }}"
+        state: absent
+        tags:
+          Name: "{{ igw_name }}"
+      register: igw_result
+
+ ## create an vpc pub subnet
+
+
+    - ec2_vpc_subnet:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0448a0615ea52cdbc"
+        region: "{{ region }}"
+        az: "{{ pubzone }}"      # az is the availability zone
+        state: absent
+        cidr: "{{ pubsubnet_cidr_block }}"
+        # enable public ip
+        map_public: yes
+        resource_tags:
+          Name: "{{ pubsubnet_name }}"
+      register: pubsubnet_result
+
+    ## create an vpc pvt subnet
+
+
+    - ec2_vpc_subnet:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0448a0615ea52cdbc"
+        region: "{{ region }}"
+        az: "{{ pvtzone }}"      # az is the availability zone
+        state: absent
+        cidr: "{{ pvtsubnet_cidr_block }}"
+        # enable public ip
+        map_public: no
+        resource_tags:
+          Name: "{{ pvtsubnet_name }}"
+      register: pvtsubnet_result
+
+## create an vpc pub route table
+- ec2_vpc_route_table:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0448a0615ea52cdbc"
+        region: "{{ region }}"
+        state: absent
+        tags:
+          Name: "{{ pubroute_table_name }}"
+        subnets: [ "subnet-015fb2c6e29a12164" ]
+        # create routes
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "igw-05935f4fea08f9bd9"
+      register: public_route_table
+
+    ## create an vpc pvt route table
+
+
+    - ec2_vpc_route_table:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0448a0615ea52cdbc"
+        region: "{{ region }}"
+        state: absent
+        tags:
+          Name: "{{ pvtroute_table_name }}"
+        subnets: [ "subnet-05c512065c72bad56" ]
+      register: private_route_table
+
+   ## create an vpc security groups
+
+
+    - ec2_group:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0448a0615ea52cdbc"
+        region: "{{ region }}"
+        state: absent
+        name: "{{ security_group_name }}"
+        description: allow
+        tags:
+          Name: vasu-sg
+        rules:
+        - proto: all
+          cidr_ip: 0.0.0.0/0
+          rule_desc: allow all traffic
+      register: security_group_results
+      ## tasks file for ec2-launch ##
+
+
+    - ec2:
+        image: ami-0ca9fb66e076a6e32
+        instance_id: i-0bc21701cfd93598e
+        instance_type: "{{ type }}"
+        region: "{{ region }}"
+        wait: yes
+        count: 1
+        state: absent
+        vpc_subnet_id: "subnet-015fb2c6e29a12164"
+        assign_public_ip: yes
+        group_id: "sg-09e611ba006acd65c"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        instance_tags:
+                Name: "{{ instance_name }}"
