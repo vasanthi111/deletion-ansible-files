@@ -1,0 +1,163 @@
+---
+- hosts: localhost
+  become: yes
+  gather_facts: false
+  vars:
+    # AWS credentials
+    aws_access_key: ""
+    aws_secret_key: ""
+
+    # VPC Configuration
+    vpc_name: "unguturi_vpc"
+    vpc_cidr_block: "11.0.0.0/16"
+    region: "us-east-1"
+
+    # Internet Gateway Configuration
+    igw_name: "unguturi_igw"
+
+    # Public Subnet Configuration
+    pubsubnet_name: "unguturi_pub"
+    pubsubnet_cidr_block: "11.0.1.0/24"
+    pubzone: "us-east-1a"
+
+    # Private Subnet Configuration
+    pvtsubnet_name: "unguturi_pvt"
+    pvtsubnet_cidr_block: "11.0.2.0/24"
+    pvtzone: "us-east-1b"
+
+    # Route Table Configuration
+    pubroute_table_name: "unguturi_pub_rt"
+    pvtroute_table_name: "unguturi_pvt_rt"
+
+    # Security Group Configuration
+    security_group_name: "unguturi_sg"
+
+    # EC2 Instance Configuration
+    image_id: "ami-0ca9fb66e076a6e32" # Replace with your preferred AMI ID
+    type: "t2.micro"
+    instance_name: "unguturi-vasu"
+
+  tasks:
+
+    # Step 1: Create VPC
+    - name: Create VPC
+      ec2_vpc_net:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        cidr_block: "{{ vpc_cidr_block }}"
+        name: "{{ vpc_name }}"
+        region: "{{ region }}"
+        dns_support: yes
+        dns_hostnames: yes
+        tenancy: default
+        state: absent
+      register: vpc_result
+
+    # Step 2: Create Internet Gateway
+    - name: Create Internet Gateway
+      ec2_vpc_igw:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0937f391198f53fde"
+        region: "{{ region }}"
+        state: absent
+        tags:
+          Name: "{{ igw_name }}"
+      register: igw_result
+
+    # Step 3: Create Public Subnet
+    - name: Create Public Subnet
+      ec2_vpc_subnet:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0937f391198f53fde"
+        region: "{{ region }}"
+        az: "{{ pubzone }}"
+        state: absent
+        cidr: "{{ pubsubnet_cidr_block }}"
+        map_public: yes
+        resource_tags:
+          Name: "{{ pubsubnet_name }}"
+      register: pubsubnet_result
+
+    # Step 4: Create Private Subnet
+    - name: Create Private Subnet
+      ec2_vpc_subnet:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0937f391198f53fde"
+        region: "{{ region }}"
+        az: "{{ pvtzone }}"
+        state: absent
+        cidr: "{{ pvtsubnet_cidr_block }}"
+        map_public: no
+        resource_tags:
+          Name: "{{ pvtsubnet_name }}"
+      register: pvtsubnet_result
+
+    # Step 5: Create Public Route Table
+    - name: Create Public Route Table
+      ec2_vpc_route_table:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0937f391198f53fde"
+        region: "{{ region }}"
+        state: absent
+        tags:
+          Name: "{{ pubroute_table_name }}"
+        subnets: 
+          - "subnet-0370d6f4bd21e0fc1"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "igw-00b87dc53cedecf1d"
+      register: public_route_table
+
+    # Step 6: Create Private Route Table
+    - name: Create Private Route Table
+      ec2_vpc_route_table:
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0937f391198f53fde"
+        region: "{{ region }}"
+        state: absent
+        tags:
+          Name: "{{ pvtroute_table_name }}"
+        subnets: 
+          - "subnet-0902fb50b6bc7145d"
+      register: private_route_table
+
+    # Step 7: Create Security Groups
+    - name: Create Security Group
+      ec2_group:
+      aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        vpc_id: "vpc-0937f391198f53fde"
+        region: "{{ region }}"
+        state: absent
+        name: "{{ security_group_name }}"
+        description: allow
+        tags:
+          Name: vasanthi-sg
+        rules:
+          - proto: all
+            cidr_ip: 0.0.0.0/0
+            rule_desc: allow all traffic
+      register: security_group_results
+
+    # Step 8: Launch EC2 Instance
+    - name: Launch EC2 Instance
+      ec2:
+        image: "{{ image_id }}"
+        instance_id: i-0456b2207f52580ad
+        instance_type: "{{ type }}"
+        region: "{{ region }}"
+        wait: yes
+        count: 1
+        state: absent
+        vpc_subnet_id: "subnet-0370d6f4bd21e0fc1"
+        assign_public_ip: yes
+        group_id: "{{ security_group_results.group_id }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        instance_tags:
+          Name: "{{ instance_name }}"
