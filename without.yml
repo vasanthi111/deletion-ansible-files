@@ -1,0 +1,131 @@
+### VPC Creation ####
+
+---
+- hosts: localhost
+  become: yes
+  tasks:
+    - ec2_vpc_net:
+        aws_access_key:
+        aws_secret_key:
+        cidr_block: 10.0.0.0/16
+        name: vasanthi-vpc
+        region: us-east-1
+        state: absent  # to delete Vpc then replace absent instead of presnt
+      register: vpc_result
+
+#### Internet gateway Creation #######
+
+    - ec2_vpc_igw:
+        aws_access_key:
+        aws_secret_key:
+        vpc_id: "vpc-01ceab558add929a7"
+        region: us-east-1
+        state: absent
+        tags:
+          Name: vasanthi-igw
+      register: igw_result
+## create an vpc pub subnet
+
+
+    - ec2_vpc_subnet:
+        aws_access_key:
+        aws_secret_key:
+        vpc_id: "vpc-01ceab558add929a7"
+        region: us-east-1
+        az: us-east-1a      # az is the availability zone
+        state: absent
+        cidr: 10.0.0.0/20
+        # enable public ip
+        map_public: yes
+        resource_tags:
+          Name: vasanthi-pub
+      register: pubsubnet_result
+
+    ## create an vpc pvt subnet
+
+
+    - ec2_vpc_subnet:
+        aws_access_key:
+aws_secret_key:
+        vpc_id: "vpc-01ceab558add929a7"
+        region: us-east-1
+        az: us-east-1b      # az is the availability zone
+        state: absent
+        cidr: 10.0.16.0/20
+        # enable public ip
+        map_public: no
+        resource_tags:
+          Name: vasanthi-pvt
+      register: pvtsubnet_result
+
+## create an vpc pub route table
+
+
+    - ec2_vpc_route_table:
+        aws_access_key:
+        aws_secret_key:
+        vpc_id: "vpc-01ceab558add929a7"
+        region: us-east-1
+        state: absent
+        tags:
+          Name: vasanthi-pub-rt
+        subnets: [ "subnet-0b7c3289480c8e527" ]
+# create routes
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "igw-0f83896bfdfb2377b"
+      register: public_route_table
+
+    ## create an vpc pvt route table
+
+
+    - ec2_vpc_route_table:
+        aws_access_key:
+        aws_secret_key:
+        vpc_id: "vpc-01ceab558add929a7"
+        region: us-east-1
+        state: absent
+        tags:
+          Name: vasanthi-pvt-rt
+        subnets: [ "subnet-0d6d346f9d7c3e6ae" ]
+      register: private_route_table
+
+   ## create an vpc security groups
+
+
+    - ec2_group:
+aws_access_key:
+        aws_secret_key:
+        vpc_id: "vpc-01ceab558add929a7"
+        region: us-east-1
+        state: absent
+        name: vasanthi-sg
+        description: allow
+        tags:
+          Name: mythrika-sg
+        rules:
+        - proto: all
+          cidr_ip: 0.0.0.0/0
+          rule_desc: allow all traffic
+      register: security_group_results
+
+
+   ## tasks file for ec2-launch ##
+
+
+    - ec2:
+        image: ami-0ca9fb66e076a6e32
+        instance_id: i-00db23375e76a9b33
+        instance_type: t2.micro
+        region: us-east-1
+        wait: yes
+count: 1
+        state: absent
+        vpc_subnet_id: "subnet-0b7c3289480c8e527"
+        assign_public_ip: yes
+        group_id: "sg-08effc3bb3a62455e"
+        aws_access_key:
+        aws_secret_key:
+        instance_tags:
+                Name: vasanthi
+                                       
